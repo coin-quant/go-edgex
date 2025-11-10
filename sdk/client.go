@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	openapi "github.com/edgex-Tech/edgex-golang-sdk/openapi"
 	"github.com/edgex-Tech/edgex-golang-sdk/sdk/account"
 	"github.com/edgex-Tech/edgex-golang-sdk/sdk/asset"
 	"github.com/edgex-Tech/edgex-golang-sdk/sdk/funding"
@@ -27,20 +26,24 @@ import (
 // Client represents an EdgeX SDK client
 type Client struct {
 	*internal.Client
-	Order    *order.Client
-	Metadata *metadata.Client
-	Account  *account.Client
-	Quote    *quote.Client
-	Funding  *funding.Client
-	Transfer *transfer.Client
-	Asset    *asset.Client
+	metadataCache     *metadata.ResultMetaData
+	metadataCacheTime time.Time
+	metadataCacheTTL  *time.Duration
+	Order             *order.Client
+	Metadata          *metadata.Client
+	Account           *account.Client
+	Quote             *quote.Client
+	Funding           *funding.Client
+	Transfer          *transfer.Client
+	Asset             *asset.Client
 }
 
 // ClientConfig holds the configuration for creating a new Client
 type ClientConfig struct {
-	BaseURL     string
-	AccountID   int64
-	StarkPriKey string
+	BaseURL          string
+	AccountID        int64
+	StarkPriKey      string
+	MetaDataCacheTTL *time.Duration
 }
 
 // NewClient creates a new EdgeX SDK client
@@ -54,35 +57,16 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	// Create OpenAPI client configuration
-	openapiConfig := openapi.NewConfiguration()
-	openapiConfig.Servers = []openapi.ServerConfiguration{
-		{
-			URL: cfg.BaseURL,
-		},
-	}
-
-	// Create transport for request interception
-	transport := http.DefaultTransport
-	openapiConfig.HTTPClient = &http.Client{
-		Transport: &requestInterceptor{
-			transport:      transport,
-			internalClient: internalClient,
-			baseURL:        cfg.BaseURL,
-		},
-	}
-
-	openapiClient := openapi.NewAPIClient(openapiConfig)
-
 	return &Client{
-		Client:   internalClient,
-		Order:    order.NewClient(internalClient, openapiClient),
-		Metadata: metadata.NewClient(internalClient, openapiClient),
-		Account:  account.NewClient(internalClient, openapiClient),
-		Quote:    quote.NewClient(internalClient, openapiClient),
-		Funding:  funding.NewClient(internalClient, openapiClient),
-		Transfer: transfer.NewClient(internalClient, openapiClient),
-		Asset:    asset.NewClient(internalClient, openapiClient),
+		Client:           internalClient,
+		metadataCacheTTL: cfg.MetaDataCacheTTL,
+		Order:            order.NewClient(internalClient),
+		Metadata:         metadata.NewClient(internalClient),
+		Account:          account.NewClient(internalClient),
+		Quote:            quote.NewClient(internalClient),
+		Funding:          funding.NewClient(internalClient),
+		Transfer:         transfer.NewClient(internalClient),
+		Asset:            asset.NewClient(internalClient),
 	}, nil
 }
 
@@ -149,30 +133,69 @@ func (i *requestInterceptor) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 // GetMetaData gets the exchange metadata
-func (c *Client) GetMetaData(ctx context.Context) (*openapi.ResultMetaData, error) {
-	return c.Metadata.GetMetaData(ctx)
+func (c *Client) GetMetaData(ctx context.Context) (*metadata.ResultMetaData, error) {
+	if c.metadataCacheTTL != nil {
+		// Check if metadata is cached and not expired
+		if c.metadataCache != nil && time.Since(c.metadataCacheTime) < *c.metadataCacheTTL {
+			return c.metadataCache, nil
+		}
+		c.metadataCacheTime = time.Now()
+	}
+	metadataCache, err := c.Metadata.GetMetaData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.metadataCache = metadataCache
+	return c.metadataCache, nil
 }
 
 // GetServerTime gets the current server time
-func (c *Client) GetServerTime(ctx context.Context) (*openapi.ResultGetServerTime, error) {
+func (c *Client) GetServerTime(ctx context.Context) (*metadata.ResultGetServerTime, error) {
 	return c.Metadata.GetServerTime(ctx)
 }
 
 // CreateOrder creates a new order with the given parameters
-func (c *Client) CreateOrder(ctx context.Context, params *order.CreateOrderParams) (*openapi.ResultCreateOrder, error) {
+func (c *Client) CreateOrder(ctx context.Context, params *order.CreateOrderParams) (*order.ResultCreateOrder, error) {
 	// Get metadata first
-	metadata, err := c.GetMetaData(ctx)
+	metadataResp, err := c.GetMetaData(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metadata: %w", err)
+	}
+	l2Price := params.Price
+	if params.Type == order.OrderTypeMarket {
+		price, err := c.getMarketOrderPrice(ctx, params.ContractId, params.Side)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get market order price: %w", err)
+		}
+		l2Price = *price
+	}
+
+	// Convert l2Price string to decimal.Decimal
+	l2PriceDecimal, err := decimal.NewFromString(l2Price)
+	if err != nil {
+		return nil, fmt.Errorf("invalid price format: %w", err)
+	}
+
+	return c.Order.CreateOrder(ctx, params, metadataResp.Data, l2PriceDecimal)
+}
+
+func (c *Client) CreateNormalWithdraw(ctx context.Context, params *asset.CreateNormalWithdrawParams) (*asset.ResultCreateNormalWithdraw, error) {
+	// Get metadata first
+	metadataResp, err := c.GetMetaData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	return c.Order.CreateOrder(ctx, params, metadata.GetData())
+	return c.Asset.CreateNormalWithdraw(ctx, params, metadataResp.Data)
 }
 
+// func (c *Client) GetCrossWithdrawSignInfo(ctx context.Context, params *asset.CreateCrossWithdrawParams) (*asset.ResultCreateCrossWithdraw, error) {
+// 	// Get metadata first
+// }
+
 // GetMaxOrderSize gets the maximum order size for a given contract and price
-func (c *Client) GetMaxOrderSize(ctx context.Context, contractID string, price decimal.Decimal) (*openapi.ResultGetMaxCreateOrderSize, error) {
-	priceFloat, _ := price.Float64()
-	return c.Order.GetMaxOrderSize(ctx, contractID, priceFloat)
+func (c *Client) GetMaxOrderSize(ctx context.Context, contractID string, price decimal.Decimal) (*order.ResultGetMaxCreateOrderSize, error) {
+	return c.Order.GetMaxOrderSize(ctx, contractID, price)
 }
 
 // CancelOrder cancels a specific order
@@ -181,124 +204,124 @@ func (c *Client) CancelOrder(ctx context.Context, params *order.CancelOrderParam
 }
 
 // GetActiveOrders gets active orders with pagination and filters
-func (c *Client) GetActiveOrders(ctx context.Context, params *order.GetActiveOrderParams) (*openapi.ResultPageDataOrder, error) {
+func (c *Client) GetActiveOrders(ctx context.Context, params *order.GetActiveOrderParams) (*order.ResultPageDataOrder, error) {
 	return c.Order.GetActiveOrders(ctx, params)
 }
 
 // GetOrdersByID retrieves orders using exchange order IDs.
-func (c *Client) GetOrdersByID(ctx context.Context, orderIDs []string) (*openapi.ResultListOrder, error) {
+func (c *Client) GetOrdersByID(ctx context.Context, orderIDs []string) (*order.ResultListOrder, error) {
 	return c.Order.GetOrdersByID(ctx, orderIDs)
 }
 
 // GetOrdersByClientOrderID retrieves orders using client-provided order IDs.
-func (c *Client) GetOrdersByClientOrderID(ctx context.Context, clientOrderIDs []string) (*openapi.ResultListOrder, error) {
+func (c *Client) GetOrdersByClientOrderID(ctx context.Context, clientOrderIDs []string) (*order.ResultListOrder, error) {
 	return c.Order.GetOrdersByClientOrderID(ctx, clientOrderIDs)
 }
 
 // GetOrderFillTransactions gets order fill transactions with pagination and filters
-func (c *Client) GetOrderFillTransactions(ctx context.Context, params *order.OrderFillTransactionParams) (*openapi.ResultPageDataOrderFillTransaction, error) {
+func (c *Client) GetOrderFillTransactions(ctx context.Context, params *order.OrderFillTransactionParams) (*order.ResultPageDataOrderFillTransaction, error) {
 	return c.Order.GetOrderFillTransactions(ctx, params)
 }
 
 // GetAccountAsset gets the account asset information
-func (c *Client) GetAccountAsset(ctx context.Context) (*openapi.ResultGetAccountAsset, error) {
+func (c *Client) GetAccountAsset(ctx context.Context) (*account.GetAccountAssetResponse, error) {
 	return c.Account.GetAccountAsset(ctx)
 }
 
 // GetAccountPositions gets the account positions
-func (c *Client) GetAccountPositions(ctx context.Context) (*openapi.ResultListPosition, error) {
+func (c *Client) GetAccountPositions(ctx context.Context) (*account.ListPositionResponse, error) {
 	return c.Account.GetAccountPositions(ctx)
 }
 
 // GetPositionTransactionPage gets the position transactions with pagination
-func (c *Client) GetPositionTransactionPage(ctx context.Context, params account.GetPositionTransactionPageParams) (*openapi.ResultPageDataPositionTransaction, error) {
+func (c *Client) GetPositionTransactionPage(ctx context.Context, params account.GetPositionTransactionPageParams) (*account.PageDataPositionTransactionResponse, error) {
 	return c.Account.GetPositionTransactionPage(ctx, params)
 }
 
 // GetCollateralTransactionPage gets the collateral transactions with pagination
-func (c *Client) GetCollateralTransactionPage(ctx context.Context, params account.GetCollateralTransactionPageParams) (*openapi.ResultPageDataCollateralTransaction, error) {
+func (c *Client) GetCollateralTransactionPage(ctx context.Context, params account.GetCollateralTransactionPageParams) (*account.PageDataCollateralTransactionResponse, error) {
 	return c.Account.GetCollateralTransactionPage(ctx, params)
 }
 
 // GetPositionTermPage gets the position terms with pagination
-func (c *Client) GetPositionTermPage(ctx context.Context, params account.GetPositionTermPageParams) (*openapi.ResultPageDataPositionTerm, error) {
+func (c *Client) GetPositionTermPage(ctx context.Context, params account.GetPositionTermPageParams) (*account.PageDataPositionTermResponse, error) {
 	return c.Account.GetPositionTermPage(ctx, params)
 }
 
 // GetAccountByID gets account information by ID
-func (c *Client) GetAccountByID(ctx context.Context) (*openapi.ResultAccount, error) {
+func (c *Client) GetAccountByID(ctx context.Context) (*account.AccountResponse, error) {
 	return c.Account.GetAccountByID(ctx)
 }
 
 // GetAccountDeleverageLight gets account deleverage light information
-func (c *Client) GetAccountDeleverageLight(ctx context.Context) (*openapi.ResultGetAccountDeleverageLight, error) {
+func (c *Client) GetAccountDeleverageLight(ctx context.Context) (*account.GetAccountDeleverageLightResponse, error) {
 	return c.Account.GetAccountDeleverageLight(ctx)
 }
 
 // GetAccountAssetSnapshotPage gets account asset snapshots with pagination
-func (c *Client) GetAccountAssetSnapshotPage(ctx context.Context, params account.GetAccountAssetSnapshotPageParams) (*openapi.ResultPageDataAccountAssetSnapshot, error) {
+func (c *Client) GetAccountAssetSnapshotPage(ctx context.Context, params account.GetAccountAssetSnapshotPageParams) (*account.PageDataAccountAssetSnapshotResponse, error) {
 	return c.Account.GetAccountAssetSnapshotPage(ctx, params)
 }
 
 // GetPositionTransactionByID gets position transactions by IDs
-func (c *Client) GetPositionTransactionByID(ctx context.Context, transactionIDs []string) (*openapi.ResultListPositionTransaction, error) {
+func (c *Client) GetPositionTransactionByID(ctx context.Context, transactionIDs []string) (*account.ListPositionTransactionResponse, error) {
 	return c.Account.GetPositionTransactionByID(ctx, transactionIDs)
 }
 
 // GetCollateralTransactionByID gets collateral transactions by IDs
-func (c *Client) GetCollateralTransactionByID(ctx context.Context, transactionIDs []string) (*openapi.ResultListCollateralTransaction, error) {
+func (c *Client) GetCollateralTransactionByID(ctx context.Context, transactionIDs []string) (*account.ListCollateralTransactionResponse, error) {
 	return c.Account.GetCollateralTransactionByID(ctx, transactionIDs)
 }
 
 // GetQuoteSummary gets the quote summary for a given contract
-func (c *Client) GetQuoteSummary(ctx context.Context, contractID string) (*openapi.ResultGetTickerSummaryModel, error) {
+func (c *Client) GetQuoteSummary(ctx context.Context, contractID string) (*quote.ResultGetTickerSummaryModel, error) {
 	return c.Quote.GetQuoteSummary(ctx, contractID)
 }
 
 // Get24HourQuotes gets the 24-hour quotes for given contracts
-func (c *Client) Get24HourQuote(ctx context.Context, contractId string) (*openapi.ResultListTicker, error) {
+func (c *Client) Get24HourQuote(ctx context.Context, contractId string) (*quote.ResultListTicker, error) {
 	return c.Quote.Get24HourQuote(ctx, contractId)
 }
 
 // GetKLine gets the K-line data for a contract
-func (c *Client) GetKLine(ctx context.Context, params quote.GetKLineParams) (*openapi.ResultPageDataKline, error) {
+func (c *Client) GetKLine(ctx context.Context, params quote.GetKLineParams) (*quote.ResultPageDataKline, error) {
 	return c.Quote.GetKLine(ctx, params)
 }
 
 // GetOrderBookDepth gets the order book depth for a contract
-func (c *Client) GetOrderBookDepth(ctx context.Context, params quote.GetOrderBookDepthParams) (*openapi.ResultListDepth, error) {
+func (c *Client) GetOrderBookDepth(ctx context.Context, params quote.GetOrderBookDepthParams) (*quote.ResultListDepth, error) {
 	return c.Quote.GetOrderBookDepth(ctx, params)
 }
 
 // GetMultiContractKLine gets the K-line data for multiple contracts
-func (c *Client) GetMultiContractKLine(ctx context.Context, params quote.GetMultiContractKLineParams) (*openapi.ResultListContractKline, error) {
+func (c *Client) GetMultiContractKLine(ctx context.Context, params quote.GetMultiContractKLineParams) (*quote.ResultListContractKline, error) {
 	return c.Quote.GetMultiContractKLine(ctx, params)
 }
 
 // GetTransferOutById gets a transfer out record by ID
-func (c *Client) GetTransferOutById(ctx context.Context, params transfer.GetTransferOutByIdParams) (*openapi.ResultListTransferOut, error) {
+func (c *Client) GetTransferOutById(ctx context.Context, params transfer.GetTransferOutByIdParams) (*transfer.ResultListTransferOut, error) {
 	return c.Transfer.GetTransferOutById(ctx, params)
 }
 
 // GetTransferInById gets a transfer in record by ID
-func (c *Client) GetTransferInById(ctx context.Context, params transfer.GetTransferInByIdParams) (*openapi.ResultListTransferIn, error) {
+func (c *Client) GetTransferInById(ctx context.Context, params transfer.GetTransferInByIdParams) (*transfer.ResultListTransferIn, error) {
 	return c.Transfer.GetTransferInById(ctx, params)
 }
 
 // GetWithdrawAvailableAmount gets the available withdrawal amount
-func (c *Client) GetWithdrawAvailableAmount(ctx context.Context, params transfer.GetWithdrawAvailableAmountParams) (*openapi.ResultGetTransferOutAvailableAmount, error) {
+func (c *Client) GetWithdrawAvailableAmount(ctx context.Context, params transfer.GetWithdrawAvailableAmountParams) (*transfer.ResultGetTransferOutAvailableAmount, error) {
 	return c.Transfer.GetWithdrawAvailableAmount(ctx, params)
 }
 
 // CreateTransferOut creates a new transfer out order
-func (c *Client) CreateTransferOut(ctx context.Context, params transfer.CreateTransferOutParams) (*openapi.ResultCreateTransferOut, error) {
+func (c *Client) CreateTransferOut(ctx context.Context, params *transfer.CreateTransferOutParams) (*transfer.ResultCreateTransferOut, error) {
 	// Get metadata first
-	metadata, err := c.GetMetaData(ctx)
+	metadataResp, err := c.GetMetaData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	return c.Transfer.CreateTransferOut(ctx, params, metadata.GetData())
+	return c.Transfer.CreateTransferOut(ctx, params, metadataResp.Data)
 }
 
 // UpdateLeverageSetting updates the account leverage settings
@@ -306,33 +329,20 @@ func (c *Client) UpdateLeverageSetting(ctx context.Context, contractID string, l
 	return c.Account.UpdateLeverageSetting(ctx, contractID, leverage)
 }
 
-// CreateLimitOrder creates a new limit order with the given parameters
-func (c *Client) CreateLimitOrder(ctx context.Context, contractId, size, price, side string, clientOrderId *string) (*openapi.ResultCreateOrder, error) {
-	params := &order.CreateOrderParams{
-		ContractId:    contractId,
-		Size:          size,
-		Price:         price,
-		Side:          side,
-		Type:          order.OrderTypeLimit,
-		ClientOrderId: clientOrderId,
-	}
-	return c.CreateOrder(ctx, params)
-}
-
 // CreateMarketOrder creates a new market order with the given parameters
-func (c *Client) CreateMarketOrder(ctx context.Context, contractId, size, side string, clientOrderId *string) (*openapi.ResultCreateOrder, error) {
+func (c *Client) getMarketOrderPrice(ctx context.Context, contractId, side string) (*string, error) {
 	// Get metadata for contract info
-	metadata, err := c.GetMetaData(ctx)
+	metadataResp, err := c.GetMetaData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
 	// Find the contract
-	var contract *openapi.Contract
-	contractList := metadata.Data.ContractList
-	for _, c := range contractList {
-		if *c.ContractId == contractId {
-			contract = &c
+	var contract *metadata.Contract
+	contractList := metadataResp.Data.ContractList
+	for i, ct := range contractList {
+		if ct.ContractId == contractId {
+			contract = &contractList[i]
 			break
 		}
 	}
@@ -348,29 +358,36 @@ func (c *Client) CreateMarketOrder(ctx context.Context, contractId, size, side s
 		if err != nil {
 			return nil, fmt.Errorf("failed to get 24-hour quotes: %w", err)
 		}
-		oraclePrice, err := decimal.NewFromString(quote.GetData()[0].GetOraclePrice())
+
+		data := quote.Data
+		if len(data) == 0 {
+			return nil, fmt.Errorf("no quote data available for contract: %s", contractId)
+		}
+
+		// Extract oracle price from Ticker
+		tickerData := data[0]
+		oraclePriceStr := ""
+		if tickerData.OraclePrice != nil {
+			oraclePriceStr = *tickerData.OraclePrice
+		}
+		if oraclePriceStr == "" {
+			return nil, fmt.Errorf("oracle price not found or invalid format")
+		}
+
+		oraclePrice, err := decimal.NewFromString(oraclePriceStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid oracle price: %s", quote.GetData()[0].GetOraclePrice())
+			return nil, fmt.Errorf("invalid oracle price: %s", oraclePriceStr)
 		}
 		multiplier := decimal.NewFromInt(10)
-		tickSize, err := decimal.NewFromString(*contract.TickSize)
+		tickSize, err := decimal.NewFromString(contract.TickSize)
 		if err != nil {
-			return nil, fmt.Errorf("invalid tick size: %s", *contract.TickSize)
+			return nil, fmt.Errorf("invalid tick size: %s", contract.TickSize)
 		}
 		precision := int32(tickSize.Exponent())
 		price = oraclePrice.Mul(multiplier).Round(precision).String()
 	} else {
 		// For sell orders: use tick size
-		price = *contract.TickSize
+		price = contract.TickSize
 	}
-
-	params := &order.CreateOrderParams{
-		ContractId:    contractId,
-		Size:          size,
-		Price:         price,
-		Side:          side,
-		Type:          order.OrderTypeMarket,
-		ClientOrderId: clientOrderId,
-	}
-	return c.CreateOrder(ctx, params)
+	return &price, nil
 }
