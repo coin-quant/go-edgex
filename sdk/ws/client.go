@@ -17,6 +17,8 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+var WebsocketDebug = false
+
 // Client represents a WebSocket client
 type Client struct {
 	conn              *websocket.Conn
@@ -178,6 +180,9 @@ func (c *Client) handleMessages() {
 					hook(err)
 				}
 				return
+			}
+			if WebsocketDebug {
+				fmt.Printf("WebSocket Message: %s\n", string(message))
 			}
 
 			// Call message hooks

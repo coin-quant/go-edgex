@@ -1,5 +1,7 @@
 package account
 
+import "github.com/coin-quant/go-edgex/openapi"
+
 // PositionTransaction represents a position transaction
 type PositionTransaction struct {
 	Id          *string `json:"id,omitempty"`
@@ -80,10 +82,10 @@ type GetAccountDeleverageLight struct {
 
 // GetAccountAssetResponse represents the response for GetAccountAsset
 type GetAccountAssetResponse struct {
-	Code       string            `json:"code"`
-	Data       *AccountAssetData `json:"data"`
-	ErrorParam interface{}       `json:"errorParam"`
-	ErrorMsg   string            `json:"msg"`
+	Code       string                  `json:"code"`
+	Data       openapi.GetAccountAsset `json:"data"`
+	ErrorParam interface{}             `json:"errorParam"`
+	ErrorMsg   string                  `json:"msg"`
 }
 
 // AccountAssetData contains account asset information

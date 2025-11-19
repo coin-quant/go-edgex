@@ -39,7 +39,6 @@ func (c *Client) GetAccountAsset(ctx context.Context) (*GetAccountAssetResponse,
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-
 	var result GetAccountAssetResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
@@ -54,37 +53,39 @@ func (c *Client) GetAccountAsset(ctx context.Context) (*GetAccountAssetResponse,
 
 // GetAccountPositions gets the account positions
 func (c *Client) GetAccountPositions(ctx context.Context) (*ListPositionResponse, error) {
-	url := fmt.Sprintf("%s/api/v1/private/account/getAccountAsset", c.Client.GetBaseURL())
-	params := map[string]string{
-		"accountId": strconv.FormatInt(c.Client.GetAccountID(), 10),
-	}
-
-	resp, err := c.Client.HttpRequest(url, "GET", nil, params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get account positions: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var assetResp GetAccountAssetResponse
-	if err := json.Unmarshal(body, &assetResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	if assetResp.Code != "SUCCESS" {
-		return nil, fmt.Errorf("request failed with code: %s", assetResp.Code)
-	}
-
-	result := &ListPositionResponse{
-		Code: assetResp.Code,
-		Data: assetResp.Data.PositionList,
-	}
-
-	return result, nil
+	//url := fmt.Sprintf("%s/api/v1/private/account/getAccountAsset", c.Client.GetBaseURL())
+	//params := map[string]string{
+	//	"accountId": strconv.FormatInt(c.Client.GetAccountID(), 10),
+	//}
+	//
+	//resp, err := c.Client.HttpRequest(url, "GET", nil, params)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to get account positions: %w", err)
+	//}
+	//defer resp.Body.Close()
+	//
+	//body, err := io.ReadAll(resp.Body)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to read response body: %w", err)
+	//}
+	//fmt.Println(string(body))
+	//
+	//var assetResp GetAccountAssetResponse
+	//if err := json.Unmarshal(body, &assetResp); err != nil {
+	//	return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	//}
+	//
+	//if assetResp.Code != "SUCCESS" {
+	//	return nil, fmt.Errorf("request failed with code: %s", assetResp.Code)
+	//}
+	//
+	//result := &ListPositionResponse{
+	//	Code: assetResp.Code,
+	//	Data: assetResp.Data.PositionList,
+	//}
+	//
+	//return result, nil
+	return nil, nil
 }
 
 // GetPositionTransactionPage gets the position transactions with pagination
