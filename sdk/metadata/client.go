@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/internal"
+	"github.com/coin-quant/go-edgex/sdk/internal"
 )
 
 // Client represents the metadata client

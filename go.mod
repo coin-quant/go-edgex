@@ -1,4 +1,4 @@
-module github.com/edgex-Tech/edgex-golang-sdk
+module github.com/coin-quant/go-edgex
 
 go 1.22.7
 

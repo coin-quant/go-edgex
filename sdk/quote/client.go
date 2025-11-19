@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/internal"
+	"github.com/coin-quant/go-edgex/sdk/internal"
 )
 
 // Client represents the new quote client without OpenAPI dependencies

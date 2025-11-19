@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/internal"
-	metadatapkg "github.com/edgex-Tech/edgex-golang-sdk/sdk/metadata"
+	"github.com/coin-quant/go-edgex/sdk/internal"
+	metadatapkg "github.com/coin-quant/go-edgex/sdk/metadata"
 	"github.com/shopspring/decimal"
 )
 

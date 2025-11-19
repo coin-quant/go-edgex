@@ -3,7 +3,7 @@ package metadata
 import (
 	"testing"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/test"
+	"github.com/coin-quant/go-edgex/test"
 	"github.com/stretchr/testify/assert"
 )
 

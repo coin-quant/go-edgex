@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/starkcurve"
+	"github.com/coin-quant/go-edgex/starkcurve"
 
 	"github.com/google/uuid"
 )

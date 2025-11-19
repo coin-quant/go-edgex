@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/metadata"
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/order"
-	"github.com/edgex-Tech/edgex-golang-sdk/test"
+	"github.com/coin-quant/go-edgex/sdk/metadata"
+	"github.com/coin-quant/go-edgex/sdk/order"
+	"github.com/coin-quant/go-edgex/test"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )

@@ -7,7 +7,7 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/internal"
+	"github.com/coin-quant/go-edgex/sdk/internal"
 )
 
 // Client represents the account client
@@ -86,7 +86,6 @@ func (c *Client) GetAccountPositions(ctx context.Context) (*ListPositionResponse
 
 	return result, nil
 }
-
 
 // GetPositionTransactionPage gets the position transactions with pagination
 func (c *Client) GetPositionTransactionPage(ctx context.Context, params GetPositionTransactionPageParams) (*PageDataPositionTransactionResponse, error) {

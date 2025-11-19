@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/asset"
-	"github.com/edgex-Tech/edgex-golang-sdk/test"
+	"github.com/coin-quant/go-edgex/sdk/asset"
+	"github.com/coin-quant/go-edgex/test"
 	"github.com/stretchr/testify/assert"
 )
 

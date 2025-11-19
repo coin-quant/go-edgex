@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/crypto/sha3"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/starkcurve"
+	"github.com/coin-quant/go-edgex/starkcurve"
 )
 
 // Client represents the base client with common functionality

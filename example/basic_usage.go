@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk"
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/asset"
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/order"
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/quote"
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/transfer"
+	"github.com/coin-quant/go-edgex/sdk"
+	"github.com/coin-quant/go-edgex/sdk/asset"
+	"github.com/coin-quant/go-edgex/sdk/order"
+	"github.com/coin-quant/go-edgex/sdk/quote"
+	"github.com/coin-quant/go-edgex/sdk/transfer"
 	"github.com/shopspring/decimal"
 )
 

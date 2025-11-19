@@ -7,7 +7,7 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/edgex-Tech/edgex-golang-sdk/sdk/internal"
+	"github.com/coin-quant/go-edgex/sdk/internal"
 )
 
 // Client represents the new funding client without OpenAPI dependencies
@@ -26,7 +26,7 @@ func NewClient(client *internal.Client) *Client {
 func (c *Client) GetFundingRate(ctx context.Context, params GetFundingRateParams) (*ResultPageDataFundingRate, error) {
 	url := fmt.Sprintf("%s/api/v1/public/funding/getFundingRatePage", c.Client.GetBaseURL())
 	queryParams := map[string]string{
-		"contractId":                   params.ContractID,
+		"contractId":                  params.ContractID,
 		"filterSettlementFundingRate": "true",
 	}
 
@@ -95,4 +95,3 @@ func (c *Client) GetLatestFundingRate(ctx context.Context, params GetLatestFundi
 
 	return &result, nil
 }
-
